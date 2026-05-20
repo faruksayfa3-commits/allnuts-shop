@@ -6,20 +6,21 @@ import { CartProvider } from '@/context/CartContext'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'AllNuts — Semințe & Nuci Premium',
-  description: 'Semințe și nuci de cea mai înaltă calitate. 100% naturale, selectate cu grijă din cele mai bune surse.',
-  keywords: 'seminte, nuci, snacks, natural, premium, romania',
+  title: 'AllNuts — Semințe & Arahide Premium | Producător Român BRC & IFS',
+  description: 'Produse sănătoase, naturale și gustoase. Semințe de floarea soarelui și arahide premium, certificate BRC & IFS. Livrare rapidă în toată România.',
+  keywords: 'seminte floarea soarelui, arahide, snacks naturale, allnuts, romania, brc, ifs',
   openGraph: {
-    title: 'AllNuts — Semințe & Nuci Premium',
-    description: 'Semințe și nuci de cea mai înaltă calitate.',
+    title: 'AllNuts — Semințe & Arahide Premium',
+    description: 'Produse sănătoase, naturale și gustoase. Producător român certificat BRC & IFS.',
     type: 'website',
+    locale: 'ro_RO',
   },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ro" className={`${inter.className} h-full antialiased`}>
-      <body className="min-h-full bg-[#0a0500]">
+    <html lang="ro" className={`${inter.className} antialiased`}>
+      <body className="bg-white text-gray-900 min-h-screen">
         <CartProvider>
           {children}
         </CartProvider>

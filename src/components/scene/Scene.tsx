@@ -1,76 +1,156 @@
 'use client'
 
-import { Canvas } from '@react-three/fiber'
-import { Environment, ContactShadows, OrbitControls } from '@react-three/drei'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Environment } from '@react-three/drei'
 import { Suspense, useRef, useEffect, useState } from 'react'
 import { SeedBag3D } from './SeedBag'
 import { SunflowerSeeds } from './SunflowerSeed'
 import { PahareScene } from './PaharScene'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import gsap from 'gsap'
 import * as THREE from 'three'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
 gsap.registerPlugin(ScrollTrigger)
 
-// 5 pungi cu culori reale AllNuts
+// Mouse parallax pe întreaga scenă
+function MouseParallax() {
+  const { camera } = useThree()
+  const mouse = useRef({ x: 0, y: 0 })
+  const target = useRef({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      mouse.current.x = (e.clientX / window.innerWidth - 0.5) * 2
+      mouse.current.y = -(e.clientY / window.innerHeight - 0.5) * 2
+    }
+    window.addEventListener('mousemove', onMove, { passive: true })
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [])
+
+  useFrame(() => {
+    target.current.x += (mouse.current.x - target.current.x) * 0.04
+    target.current.y += (mouse.current.y - target.current.y) * 0.04
+    camera.position.x = target.current.x * 0.6
+    camera.position.y = target.current.y * 0.3
+    camera.lookAt(0, 0, 0)
+  })
+
+  return null
+}
+
+// Particule de fond — atmosferă
+function AtmosphereParticles() {
+  const meshRef = useRef<THREE.Points>(null)
+
+  const [positions] = useState(() => {
+    const count = 300
+    const pos = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 30
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 20
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 20 - 5
+    }
+    return pos
+  })
+
+  useFrame((state) => {
+    if (!meshRef.current) return
+    meshRef.current.rotation.y = state.clock.elapsedTime * 0.02
+    meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.01) * 0.05
+  })
+
+  return (
+    <points ref={meshRef}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.02}
+        color="#EC1C24"
+        transparent
+        opacity={0.25}
+        sizeAttenuation
+      />
+    </points>
+  )
+}
+
+// Grila de fond (tip ohzi)
+function GridFloor() {
+  return (
+    <group position={[0, -4, 0]} rotation={[0, 0, 0]}>
+      <mesh>
+        <planeGeometry args={[40, 40, 20, 20]} />
+        <meshBasicMaterial
+          color="#EC1C24"
+          wireframe
+          transparent
+          opacity={0.04}
+        />
+      </mesh>
+    </group>
+  )
+}
+
 const BAGS = [
-  { position: [-3.5, 0.5, -2] as [number,number,number], index: 0, color: '#7B3B8C', isGold: false },  // mov
-  { position: [-1.5, -0.3, -0.5] as [number,number,number], index: 1, color: '#C0392B', isGold: false }, // rosu
-  { position: [0, 0.8, 0] as [number,number,number], index: 2, color: '#D4A017', isGold: true },          // gold (central)
-  { position: [1.8, -0.2, -0.5] as [number,number,number], index: 3, color: '#7B3B8C', isGold: false },  // mov
-  { position: [3.5, 0.4, -1.8] as [number,number,number], index: 4, color: '#C0392B', isGold: false },   // rosu
+  { position: [-3.8, 0.4, -1.5] as [number,number,number], index: 0, bagColor: '#5c1a6e', isGold: false },
+  { position: [-1.6, -0.2, -0.3] as [number,number,number], index: 1, bagColor: '#8B1A22', isGold: false },
+  { position: [ 0.1, 0.9,  0.5] as [number,number,number], index: 2, bagColor: '#B8860B', isGold: true  },
+  { position: [ 1.9, -0.3, -0.5] as [number,number,number], index: 3, bagColor: '#5c1a6e', isGold: false },
+  { position: [ 3.8, 0.5, -1.8] as [number,number,number], index: 4, bagColor: '#8B1A22', isGold: false },
 ]
 
 function Lights() {
   return (
     <>
-      <ambientLight intensity={1.2} />
-      <directionalLight
-        position={[6, 10, 6]}
-        intensity={2.5}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
+      <ambientLight intensity={0.15} color="#1a0505" />
+      <pointLight position={[0, 6, 4]} intensity={3} color="#EC1C24" distance={20} decay={2} />
+      <pointLight position={[-5, 2, 2]} intensity={1.5} color="#ff4444" distance={15} decay={2} />
+      <pointLight position={[5, 2, 2]} intensity={1.5} color="#ff2222" distance={15} decay={2} />
+      <spotLight
+        position={[0, 10, 0]}
+        angle={0.5}
+        penumbra={1}
+        intensity={2}
         color="#ffffff"
+        castShadow
       />
-      <directionalLight position={[-4, 2, -2]} intensity={0.8} color="#ffe8e0" />
-      <pointLight position={[0, 4, 4]} color="#ffcc44" intensity={1.5} />
-      <hemisphereLight args={['#fff5ee', '#ffeedd', 0.6]} />
+      <hemisphereLight args={['#1a0000', '#000000', 0.3]} />
     </>
   )
 }
 
-// Controlează ce se vede pe scenă în funcție de secțiune
-function SceneController() {
-  const [section, setSection] = useState<'bags' | 'seeds' | 'pahare'>('bags')
+function SceneContent() {
+  const [phase, setPhase] = useState<'bags' | 'seeds' | 'pahare'>('bags')
 
   useEffect(() => {
     ScrollTrigger.create({
       trigger: '#product-reveal',
       start: 'top center',
-      onEnter: () => setSection('seeds'),
-      onLeaveBack: () => setSection('bags'),
+      onEnter: () => setPhase('seeds'),
+      onLeaveBack: () => setPhase('bags'),
     })
     ScrollTrigger.create({
       trigger: '#pahare-section',
       start: 'top center',
-      onEnter: () => setSection('pahare'),
-      onLeaveBack: () => setSection('seeds'),
+      onEnter: () => setPhase('pahare'),
+      onLeaveBack: () => setPhase('seeds'),
     })
     return () => ScrollTrigger.getAll().forEach(t => t.kill())
   }, [])
 
   return (
     <>
-      {/* Pungi — vizibile întotdeauna în faza bags */}
-      <group visible={section !== 'pahare'}>
-        {BAGS.map((bag) => (
-          <SeedBag3D key={bag.index} {...bag} />
-        ))}
-        {section === 'seeds' && <SunflowerSeeds />}
+      <AtmosphereParticles />
+      <GridFloor />
+      <MouseParallax />
+
+      <group visible={phase !== 'pahare'}>
+        {BAGS.map(b => <SeedBag3D key={b.index} {...b} />)}
+        {phase === 'seeds' && <SunflowerSeeds />}
       </group>
 
-      {/* Pahare — vizibile doar în faza pahare */}
-      {section === 'pahare' && <PahareScene />}
+      {phase === 'pahare' && <PahareScene />}
     </>
   )
 }
@@ -79,24 +159,23 @@ export function Scene() {
   return (
     <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
       <Canvas
-        camera={{ position: [0, 0, 8], fov: 48 }}
+        camera={{ position: [0, 0, 8.5], fov: 46 }}
         shadows
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.2,
+        }}
         dpr={[1, 2]}
-        style={{ background: 'transparent' }}
+        style={{ background: '#080808' }}
       >
+        <fog attach="fog" args={['#080808', 12, 30]} />
         <Suspense fallback={null}>
           <Lights />
-          <SceneController />
-          <Environment preset="city" />
-          <ContactShadows
-            position={[0, -2.8, 0]}
-            opacity={0.25}
-            scale={14}
-            blur={3}
-            far={5}
-            color="#cc0000"
-          />
+          <SceneContent />
+          <Environment preset="night" />
         </Suspense>
       </Canvas>
     </div>

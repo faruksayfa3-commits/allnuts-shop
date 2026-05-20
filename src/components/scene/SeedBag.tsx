@@ -2,175 +2,244 @@
 
 import { useRef, useEffect, useMemo } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
-import { RoundedBox } from '@react-three/drei'
+import { RoundedBox, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
 gsap.registerPlugin(ScrollTrigger)
 
-// Generează textura pungii pe Canvas — copiată după designul real AllNuts
-function useBagTexture(bagColor: string, labelColor: string, isGold: boolean) {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 768
-    const ctx = canvas.getContext('2d')!
+// ─── Generează textura pungii AllNuts pe Canvas ──────────────────────────────
+// Replica fidelă a pungii reale: corp colorat + oval etichetă roșie/gold cu
+// "ALL NUTS" în alb, clip metalic sus, fereastră transparentă jos.
+function buildBagTexture(bagHex: string, isGold: boolean): THREE.CanvasTexture {
+  const W = 512, H = 800
+  const c = document.createElement('canvas')
+  c.width = W; c.height = H
+  const ctx = c.getContext('2d')!
 
-    // Fond pungă (gradient)
-    const grad = ctx.createLinearGradient(0, 0, 512, 768)
-    grad.addColorStop(0, lighten(bagColor, 30))
-    grad.addColorStop(0.5, bagColor)
-    grad.addColorStop(1, darken(bagColor, 30))
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, 512, 768)
+  // ── 1. Corp pungă (gradient vertical) ──
+  const bg = ctx.createLinearGradient(0, 0, W, H)
+  bg.addColorStop(0,   shiftColor(bagHex, +40))
+  bg.addColorStop(0.3, shiftColor(bagHex, +15))
+  bg.addColorStop(0.7, bagHex)
+  bg.addColorStop(1,   shiftColor(bagHex, -40))
+  ctx.fillStyle = bg
+  ctx.roundRect(0, 0, W, H, 0)
+  ctx.fill()
 
-    // Dungi subtile (textura materialului)
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-    ctx.lineWidth = 2
-    for (let i = 0; i < 512; i += 18) {
-      ctx.beginPath()
-      ctx.moveTo(i, 0)
-      ctx.lineTo(i, 768)
-      ctx.stroke()
-    }
+  // ── 2. Dungi verticale subtile (textura materialului) ──
+  for (let x = 0; x < W; x += 22) {
+    const s = ctx.createLinearGradient(x, 0, x + 11, 0)
+    s.addColorStop(0,   'rgba(255,255,255,0)')
+    s.addColorStop(0.5, 'rgba(255,255,255,0.05)')
+    s.addColorStop(1,   'rgba(255,255,255,0)')
+    ctx.fillStyle = s
+    ctx.fillRect(x, 80, 11, H - 80)
+  }
 
-    // Oval etichetă (roșu cu contur alb — ca pe punga reală)
-    const cx = 256, cy = 380, rx = 190, ry = 130
-    ctx.save()
-    ctx.translate(cx, cy)
+  // ── 3. Sigiliu / guler sus ──
+  const guleGrad = ctx.createLinearGradient(0, 60, 0, 130)
+  guleGrad.addColorStop(0, shiftColor(bagHex, -30))
+  guleGrad.addColorStop(1, bagHex)
+  ctx.fillStyle = guleGrad
+  ctx.fillRect(80, 65, W - 160, 65)
 
-    // Umbră ovalului
-    ctx.shadowColor = 'rgba(0,0,0,0.4)'
-    ctx.shadowBlur = 20
+  // clip metalic
+  const metalGrad = ctx.createLinearGradient(80, 0, W - 80, 0)
+  metalGrad.addColorStop(0,   '#555')
+  metalGrad.addColorStop(0.3, '#ddd')
+  metalGrad.addColorStop(0.7, '#eee')
+  metalGrad.addColorStop(1,   '#555')
+  ctx.fillStyle = metalGrad
+  ctx.fillRect(110, 74, W - 220, 16)
 
-    // Oval background roșu
-    ctx.beginPath()
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
-    if (isGold) {
-      const goldGrad = ctx.createRadialGradient(-30, -30, 10, 0, 0, rx)
-      goldGrad.addColorStop(0, '#f5d060')
-      goldGrad.addColorStop(0.5, '#d4a017')
-      goldGrad.addColorStop(1, '#a07010')
-      ctx.fillStyle = goldGrad
-    } else {
-      ctx.fillStyle = '#EC1C24'
-    }
-    ctx.fill()
+  // ── 4. OVAL ETICHETĂ (roșu sau gold) ──
+  const cx = W / 2, cy = 400, rx = 195, ry = 140
+  ctx.save()
+  ctx.translate(cx, cy)
 
-    // Contur alb oval
-    ctx.shadowBlur = 0
-    ctx.strokeStyle = '#FFFFFF'
-    ctx.lineWidth = 8
-    ctx.stroke()
+  // umbra ovalului
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'
+  ctx.shadowBlur = 25
 
-    // Al doilea contur interior
-    ctx.beginPath()
-    ctx.ellipse(0, 0, rx - 14, ry - 14, 0, 0, Math.PI * 2)
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)'
-    ctx.lineWidth = 3
-    ctx.stroke()
+  // fond oval
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+  if (isGold) {
+    const gGrad = ctx.createRadialGradient(-40, -40, 10, 0, 0, rx)
+    gGrad.addColorStop(0, '#f7dc60')
+    gGrad.addColorStop(0.55, '#d4a017')
+    gGrad.addColorStop(1, '#8b6400')
+    ctx.fillStyle = gGrad
+  } else {
+    const rGrad = ctx.createRadialGradient(-20, -20, 10, 0, 0, rx)
+    rGrad.addColorStop(0, '#ff3333')
+    rGrad.addColorStop(0.6, '#EC1C24')
+    rGrad.addColorStop(1, '#8b0000')
+    ctx.fillStyle = rGrad
+  }
+  ctx.fill()
 
-    // Text "ALL NUTS" în oval
-    ctx.fillStyle = '#FFFFFF'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
+  ctx.shadowBlur = 0
 
-    ctx.font = 'bold 64px Arial Black, sans-serif'
-    ctx.letterSpacing = '4px'
-    ctx.fillText('ALL NUTS', 0, -18)
+  // contur alb exterior
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+  ctx.strokeStyle = '#FFFFFF'
+  ctx.lineWidth = 9
+  ctx.stroke()
 
-    ctx.font = '500 22px Arial, sans-serif'
-    ctx.letterSpacing = '6px'
-    ctx.fillStyle = 'rgba(255,255,255,0.85)'
-    ctx.fillText('SEMINTE', 0, 28)
+  // contur interior subtil
+  ctx.beginPath()
+  ctx.ellipse(0, 0, rx - 16, ry - 16, 0, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+  ctx.lineWidth = 2.5
+  ctx.stroke()
 
-    ctx.font = '400 16px Arial, sans-serif'
-    ctx.letterSpacing = '3px'
-    ctx.fillStyle = 'rgba(255,255,255,0.65)'
-    ctx.fillText('DE FLOAREA SOARELUI', 0, 56)
+  // ── Text în oval ──
+  ctx.fillStyle = '#FFFFFF'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'
+  ctx.shadowBlur = 8
 
-    ctx.restore()
+  // "ALL NUTS" — bold mare
+  ctx.font = 'bold 68px "Arial Black", Impact, sans-serif'
+  ctx.fillText('ALL NUTS', 0, -22)
 
-    // Greutate (jos)
-    ctx.fillStyle = 'rgba(255,255,255,0.8)'
-    ctx.font = 'bold 28px Arial, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('130g', 256, 620)
+  // linie decorativă
+  ctx.shadowBlur = 0
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(-130, 8); ctx.lineTo(130, 8)
+  ctx.stroke()
 
-    // Linie decorativă sus
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)'
-    ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.moveTo(60, 120)
-    ctx.lineTo(452, 120)
-    ctx.stroke()
+  // "SEMINTE" subtitlu
+  ctx.font = '600 20px Arial, sans-serif'
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.letterSpacing = '4px'
+  ctx.fillText('SEMINTE', 0, 30)
 
-    // Sigiliu sus (guler)
-    const guleGrad = ctx.createLinearGradient(0, 60, 0, 110)
-    guleGrad.addColorStop(0, darken(bagColor, 20))
-    guleGrad.addColorStop(1, bagColor)
-    ctx.fillStyle = guleGrad
-    ctx.fillRect(100, 60, 312, 50)
+  ctx.font = '400 13px Arial, sans-serif'
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.fillText('DE FLOAREA SOARELUI', 0, 56)
 
-    // Clip metalic
-    const clipGrad = ctx.createLinearGradient(0, 0, 512, 0)
-    clipGrad.addColorStop(0, '#888')
-    clipGrad.addColorStop(0.5, '#eee')
-    clipGrad.addColorStop(1, '#888')
-    ctx.fillStyle = clipGrad
-    ctx.fillRect(130, 68, 252, 14)
+  ctx.restore()
 
-    const tex = new THREE.CanvasTexture(canvas)
-    return tex
-  }, [bagColor, labelColor, isGold])
+  // ── 5. Fereastră transparentă (jos) — simulare ──
+  ctx.save()
+  ctx.globalAlpha = 0.12
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.roundRect(W / 2 - 100, 590, 200, 120, 8)
+  ctx.fill()
+  ctx.globalAlpha = 1
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.restore()
+
+  // ── 6. Greutate ──
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.font = 'bold 22px Arial, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('130g', W / 2, 660)
+
+  // ── 7. Logo text jos ──
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'
+  ctx.font = '11px Arial, sans-serif'
+  ctx.fillText('allnuts.ro', W / 2, 750)
+
+  return new THREE.CanvasTexture(c)
 }
 
-function lighten(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = Math.min(255, (num >> 16) + amount)
-  const g = Math.min(255, ((num >> 8) & 0xff) + amount)
-  const b = Math.min(255, (num & 0xff) + amount)
+function shiftColor(hex: string, amount: number): string {
+  const n = parseInt(hex.replace('#', ''), 16)
+  const r = Math.max(0, Math.min(255, (n >> 16) + amount))
+  const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + amount))
+  const b = Math.max(0, Math.min(255, (n & 0xff) + amount))
   return `rgb(${r},${g},${b})`
 }
 
-function darken(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = Math.max(0, (num >> 16) - amount)
-  const g = Math.max(0, ((num >> 8) & 0xff) - amount)
-  const b = Math.max(0, (num & 0xff) - amount)
-  return `rgb(${r},${g},${b})`
+// ─── Glow plane în spatele pungii — culoarea dominantă ───────────────────────
+function BagGlow({ color }: { color: string }) {
+  const col = useMemo(() => new THREE.Color(color), [color])
+  return (
+    <mesh position={[0, 0, -0.6]}>
+      <planeGeometry args={[3.5, 4.5]} />
+      <meshBasicMaterial color={col} transparent opacity={0.06} />
+    </mesh>
+  )
 }
 
+// Sprite glow circular difuz
+function GlowSprite({ color }: { color: string }) {
+  const tex = useMemo(() => {
+    const c = document.createElement('canvas')
+    c.width = 256; c.height = 256
+    const ctx = c.getContext('2d')!
+    const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128)
+    g.addColorStop(0, color + 'cc')
+    g.addColorStop(0.4, color + '44')
+    g.addColorStop(1, color + '00')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 256, 256)
+    return new THREE.CanvasTexture(c)
+  }, [color])
+
+  return (
+    <mesh position={[0, 0, -0.8]}>
+      <planeGeometry args={[5, 5]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} blending={THREE.AdditiveBlending} />
+    </mesh>
+  )
+}
+
+// ─── Componenta principală SeedBag3D ─────────────────────────────────────────
 interface SeedBagProps {
   position?: [number, number, number]
   index?: number
-  bagColor?: string    // culoarea pungii
-  isGold?: boolean     // label auriu sau roșu
+  bagColor?: string
+  isGold?: boolean
 }
 
-export function SeedBag3D({ position = [0, 0, 0], index = 0, bagColor = '#8B3A8B', isGold = false }: SeedBagProps) {
+export function SeedBag3D({
+  position = [0, 0, 0],
+  index = 0,
+  bagColor = '#7B3B8C',
+  isGold = false,
+}: SeedBagProps) {
   const groupRef = useRef<THREE.Group>(null)
-  const texture = useBagTexture(bagColor, '#EC1C24', isGold)
+
+  // Textură generată o singură dată per pungă
+  const texture = useMemo(() => buildBagTexture(bagColor, isGold), [bagColor, isGold])
+
+  // Textură spate (inversă, mai întunecată)
+  const backTexture = useMemo(() => {
+    const tex = buildBagTexture(shiftColor(bagColor, -30), false)
+    return tex
+  }, [bagColor])
 
   useEffect(() => {
     if (!groupRef.current) return
-    const offset = index * (Math.PI * 2 / 5)
+    const initialPos = { ...{ x: position[0], y: position[1], z: position[2] } }
+    const offset = index * ((Math.PI * 2) / 5)
 
     ScrollTrigger.create({
       trigger: '#hero-section',
       start: 'top top',
-      end: '+=350%',
+      end: '+=400%',
       scrub: 2.5,
       onUpdate: (self) => {
         if (!groupRef.current) return
-        groupRef.current.rotation.y = offset + self.progress * Math.PI * 8
-        groupRef.current.rotation.x = Math.sin(self.progress * Math.PI * 3) * 0.35
-        // Se adună spre centru la progres > 0.7
-        if (self.progress > 0.7) {
-          const t = (self.progress - 0.7) / 0.3
-          groupRef.current.position.x = THREE.MathUtils.lerp(position[0], position[0] * (1 - t * 0.5), t)
-        }
+        // Rotație
+        groupRef.current.rotation.y = offset + self.progress * Math.PI * 10
+        groupRef.current.rotation.x = Math.sin(self.progress * Math.PI * 4) * 0.4
+        // Derive ușoară în spațiu
+        groupRef.current.position.x = initialPos.x + Math.sin(self.progress * Math.PI * 2 + offset) * 0.5
+        groupRef.current.position.z = initialPos.z + Math.cos(self.progress * Math.PI * 2 + offset) * 0.3
       },
     })
 
@@ -179,33 +248,49 @@ export function SeedBag3D({ position = [0, 0, 0], index = 0, bagColor = '#8B3A8B
 
   useFrame((state) => {
     if (!groupRef.current) return
+    // Flotare sinusoidală independentă
     groupRef.current.position.y =
-      position[1] + Math.sin(state.clock.elapsedTime * 0.7 + index * 1.3) * 0.12
+      position[1] + Math.sin(state.clock.elapsedTime * 0.65 + index * 1.5) * 0.15
   })
 
   return (
     <group ref={groupRef} position={position}>
-      {/* Corp pungă */}
-      <RoundedBox args={[1.1, 1.65, 0.38]} radius={0.07} smoothness={6} castShadow>
-        <meshStandardMaterial map={texture} roughness={0.3} metalness={0.1} />
+      {/* Glow difuz în culoarea pungii */}
+      <GlowSprite color={bagColor} />
+      <BagGlow color={bagColor} />
+
+      {/* Corp pungă față — textură AllNuts */}
+      <RoundedBox args={[1.15, 1.75, 0.05]} radius={0.06} smoothness={6} castShadow position={[0, 0, 0.18]}>
+        <meshStandardMaterial map={texture} roughness={0.25} metalness={0.08} side={THREE.FrontSide} />
       </RoundedBox>
 
-      {/* Guler sus */}
-      <mesh position={[0, 0.92, 0]} castShadow>
-        <boxGeometry args={[0.85, 0.18, 0.32]} />
-        <meshStandardMaterial color={bagColor} roughness={0.4} />
+      {/* Corp pungă spate */}
+      <RoundedBox args={[1.15, 1.75, 0.05]} radius={0.06} smoothness={6} castShadow position={[0, 0, -0.18]} rotation={[0, Math.PI, 0]}>
+        <meshStandardMaterial map={backTexture} roughness={0.3} metalness={0.05} side={THREE.FrontSide} />
+      </RoundedBox>
+
+      {/* Laterale pungii (volum 3D) */}
+      <mesh castShadow>
+        <boxGeometry args={[1.15, 1.75, 0.36]} />
+        <meshStandardMaterial color={bagColor} roughness={0.4} metalness={0.05} />
+      </mesh>
+
+      {/* Guler / sigiliu sus */}
+      <mesh position={[0, 0.95, 0]} castShadow>
+        <boxGeometry args={[0.9, 0.22, 0.3]} />
+        <meshStandardMaterial color={shiftColor(bagColor, -30)} roughness={0.4} />
       </mesh>
 
       {/* Clip metalic */}
-      <mesh position={[0, 0.96, 0]}>
-        <boxGeometry args={[0.6, 0.06, 0.3]} />
-        <meshStandardMaterial color="#cccccc" roughness={0.1} metalness={0.9} />
+      <mesh position={[0, 0.99, 0]}>
+        <boxGeometry args={[0.65, 0.07, 0.28]} />
+        <meshStandardMaterial color="#cccccc" roughness={0.08} metalness={0.95} />
       </mesh>
 
-      {/* Reflexie laterală */}
-      <mesh position={[0.42, 0, 0]}>
-        <planeGeometry args={[0.05, 1.5]} />
-        <meshStandardMaterial color="#ffffff" transparent opacity={0.15} roughness={0} />
+      {/* Highlight lateral (reflexie) */}
+      <mesh position={[0.46, 0.1, 0]}>
+        <planeGeometry args={[0.04, 1.4]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.12} />
       </mesh>
     </group>
   )
